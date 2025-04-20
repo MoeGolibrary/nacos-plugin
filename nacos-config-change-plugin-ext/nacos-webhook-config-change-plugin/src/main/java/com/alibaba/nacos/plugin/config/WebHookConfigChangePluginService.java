@@ -16,6 +16,7 @@
 
 package com.alibaba.nacos.plugin.config;
 
+import com.alibaba.nacos.api.utils.StringUtils;
 import com.alibaba.nacos.common.http.HttpClientBeanHolder;
 import com.alibaba.nacos.common.http.HttpRestResult;
 import com.alibaba.nacos.common.http.client.NacosRestTemplate;
@@ -27,6 +28,12 @@ import com.alibaba.nacos.plugin.config.constants.ConfigChangePointCutTypes;
 import com.alibaba.nacos.plugin.config.model.ConfigChangeRequest;
 import com.alibaba.nacos.plugin.config.model.ConfigChangeResponse;
 import com.alibaba.nacos.plugin.config.spi.ConfigChangePluginService;
+import com.slack.api.Slack;
+import com.slack.api.methods.response.chat.ChatPostMessageResponse;
+import com.slack.api.model.block.HeaderBlock;
+import com.slack.api.model.block.SectionBlock;
+import com.slack.api.model.block.composition.MarkdownTextObject;
+import com.slack.api.model.block.composition.PlainTextObject;
 import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +43,7 @@ import java.io.InterruptedIOException;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -47,52 +55,81 @@ import java.util.concurrent.TimeUnit;
  * @author liyunfei
  **/
 public class WebHookConfigChangePluginService implements ConfigChangePluginService {
-    
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WebHookConfigChangePluginService.class);
-    
+
     private final NacosRestTemplate restTemplate = HttpClientBeanHolder.getNacosRestTemplate(LOGGER);
-    
+
     private final Set<Integer> retryResponseCodes = new CopyOnWriteArraySet<Integer>(
             Arrays.asList(HttpStatus.SC_INTERNAL_SERVER_ERROR, HttpStatus.SC_BAD_GATEWAY,
                     HttpStatus.SC_SERVICE_UNAVAILABLE, HttpStatus.SC_GATEWAY_TIMEOUT));
-    
+
     private static final int INCREASE_STEPS = 1000;
-    
+
     private static final int DEFAULT_MAX_CONTENT_CAPACITY = 10 * 1024;
-    
+
+    private static final String URL = "url";
+
+    private static final String TYPE = "type";
+
+    private static final String HTTP = "http";
+
+    private static final String SLACK = "slack";
+
+    private static final String TOKEN = "token";
+
+    // channel
+    private static final String CHANNEL_ID = "channelID";
+
+    private static final String WEBHOOK_TOKEN = "SLACK_TOKEN";
+
+
     @Override
     public void execute(ConfigChangeRequest configChangeRequest, ConfigChangeResponse configChangeResponse) {
         final Properties properties = (Properties) configChangeRequest.getArg(ConfigChangeConstants.PLUGIN_PROPERTIES);
-        final String webhookUrl = properties.getProperty("webhookUrl");
+
+        StringBuilder requestDetails = new StringBuilder();
+        requestDetails.append("ConfigChangeRequest [")
+                .append("requestType=").append(configChangeRequest.getRequestType().value()).append(", ");
+        for (Map.Entry<String, Object> entry : configChangeRequest.getRequestArgs().entrySet()) {
+            requestDetails.append(entry.getKey()).append("=").append(entry.getValue()).append(", ");
+        }
+
+        StringBuilder responseDetails = new StringBuilder();
+        responseDetails.append("ConfigChangeResponse [")
+                .append("msg=").append(configChangeResponse.getMsg()).append(", ")
+                .append("success=").append(configChangeResponse.isSuccess()).append("]");
+
+        LOGGER.info("WebHookConfigChangePluginService execute,{}, {}, {}", properties, requestDetails, responseDetails);
         ConfigChangeNotifyInfo configChangeNotifyInfo = new ConfigChangeNotifyInfo(
                 configChangeRequest.getRequestType().value(), true, (String) configChangeRequest.getArg("modifyTime"));
         wrapConfigChangeNotifyInfo(configChangeNotifyInfo, properties, configChangeRequest, configChangeResponse);
         ConfigChangePluginExecutor
-                .executeAsyncConfigChangePluginTask(new WebhookNotifySingleTask(webhookUrl, configChangeNotifyInfo));
+                .executeAsyncConfigChangePluginTask(new WebhookNotifySingleTask(properties, configChangeNotifyInfo));
     }
-    
+
     @Override
     public ConfigChangeExecuteTypes executeType() {
         return ConfigChangeExecuteTypes.EXECUTE_AFTER_TYPE;
     }
-    
+
     @Override
     public String getServiceType() {
         return "webhook";
     }
-    
+
     @Override
     public int getOrder() {
         return Integer.MAX_VALUE;
     }
-    
+
     @Override
     public ConfigChangePointCutTypes[] pointcutMethodNames() {
         return ConfigChangePointCutTypes.values();
     }
-    
+
     private ConfigChangeNotifyInfo wrapConfigChangeNotifyInfo(ConfigChangeNotifyInfo configChangeNotifyInfo,
-            Properties properties, ConfigChangeRequest configChangeRequest, ConfigChangeResponse configChangeResponse) {
+                                                              Properties properties, ConfigChangeRequest configChangeRequest, ConfigChangeResponse configChangeResponse) {
         final Object contentMaxCapacity = properties.getProperty("contentMaxCapacity");
         final String content = (String) configChangeRequest.getArg("content");
         int maxContent = DEFAULT_MAX_CONTENT_CAPACITY;
@@ -149,25 +186,41 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
         configChangeNotifyInfo.setContent(content);
         return configChangeNotifyInfo;
     }
-    
+
     private class WebhookNotifySingleTask implements Runnable {
-        
-        private String pushUrl;
-        
+        private Properties properties;
+
         private ConfigChangeNotifyInfo configChangeNotifyInfo;
-        
+
         private int retry = 0;
-        
+
         private final int maxRetry = 6;
-        
-        public WebhookNotifySingleTask(String pushUrl, ConfigChangeNotifyInfo configChangeNotifyInfo) {
-            this.pushUrl = pushUrl;
+
+        public WebhookNotifySingleTask(Properties properties, ConfigChangeNotifyInfo configChangeNotifyInfo) {
+            this.properties = properties;
             this.configChangeNotifyInfo = configChangeNotifyInfo;
         }
-        
+
         @Override
         public void run() {
+            final String type = properties.getProperty(TYPE, HTTP);
+
+            if (type.equals(HTTP)) {
+                httpNotify();
+            } else if (type.equals(SLACK)) {
+                slackNotify();
+            } else {
+                LOGGER.warn("webhook type {} is not supported", type);
+            }
+        }
+
+        private void httpNotify() {
             try {
+                final String pushUrl = properties.getProperty(URL);
+                if (StringUtils.isBlank(pushUrl)) {
+                    LOGGER.warn("webhook url is empty,please check it");
+                    return;
+                }
                 HttpRestResult<String> restResult = restTemplate
                         .post(pushUrl, Header.EMPTY, Query.EMPTY, configChangeNotifyInfo, String.class);
                 int respCode = restResult.getCode();
@@ -193,14 +246,99 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                 }
             }
         }
-        
+
+        /**
+         * Slack notify.
+         * 先发送一条消息到slack指定channel，包含修改相关的信息
+         * 然后再发送一条信息到thread，包含详细的修改信息
+         */
+        private void slackNotify() {
+            try {
+                Slack slack = Slack.getInstance();
+                String token = properties.getProperty(TOKEN, System.getenv(WEBHOOK_TOKEN));
+                String channelID = properties.getProperty(CHANNEL_ID);
+
+                if (StringUtils.isBlank(token) || StringUtils.isBlank(channelID)) {
+                    LOGGER.warn("webhook token | channelID is empty,please check it");
+                    return;
+                }
+
+                ChatPostMessageResponse resp = slack.methods(token).chatPostMessage(req ->
+                        req.channel(channelID)
+                                .blocks(Arrays.asList(
+                                        HeaderBlock.builder()
+                                                .blockId("header-1")
+                                                .text(PlainTextObject.builder()
+                                                        .text("Config Change Notify")
+                                                        .build())
+                                                .build(),
+                                        SectionBlock.builder()
+                                                .blockId("section-1")
+                                                .text(MarkdownTextObject.builder()
+                                                        .text(String.format("``%s\r\n%s\r\n```", configChangeNotifyInfo.getType(), configChangeNotifyInfo.getContent()))
+                                                        .build())
+                                                .fields(Arrays.asList(
+                                                        MarkdownTextObject.builder()
+                                                                .text(String.format("*DataId:* %s", configChangeNotifyInfo.getDataId()))
+                                                                .build(),
+                                                        MarkdownTextObject.builder()
+                                                                .text(String.format("*Group:* %s", configChangeNotifyInfo.getGroup()))
+                                                                .build(),
+                                                        MarkdownTextObject.builder()
+                                                                .text(String.format("*Tenant:* %s", configChangeNotifyInfo.getTenant()))
+                                                                .build(),
+                                                        MarkdownTextObject.builder()
+                                                                .text(String.format("*ModifyTime:* %s", configChangeNotifyInfo.getModifyTime()))
+                                                                .build(),
+                                                        MarkdownTextObject.builder()
+                                                                .text(String.format("*ModifyUser:* %s", configChangeNotifyInfo.getSrcUser()))
+                                                                .build(),
+                                                        MarkdownTextObject.builder()
+                                                                .text(String.format("*Namespace:* %s", configChangeNotifyInfo.getNamespace()))
+                                                                .build()
+                                                ))
+                                                .build()
+                                ))
+
+                );
+                if (resp.isOk()) {
+                    String ts = resp.getMessage().getTs();
+                    String channel = resp.getMessage().getChannel();
+                    String threadTs = ts;
+                    ChatPostMessageResponse postMessage = slack.methods(token).chatPostMessage(req ->
+                            req.channel(channel)
+                                    .threadTs(threadTs)
+                                    .blocks(Arrays.asList(
+                                            SectionBlock.builder()
+                                                    .blockId("section-1")
+                                                    .text(MarkdownTextObject.builder()
+                                                            .text(String.format("``%s\r\n%s\r\n```", configChangeNotifyInfo.getType(), configChangeNotifyInfo.getContent()))
+                                                            .build())
+                                                    .build()
+                                    ))
+                    );
+                }
+
+            } catch (Exception e) {
+                if (e instanceof InterruptedIOException || e instanceof UnknownHostException
+                        || e instanceof ConnectException || e instanceof SSLException) {
+                    LOGGER.warn("config change notify request failed,will retry request({}),cause: {}", retry,
+                            e.getMessage());
+                    retryRequest();
+                } else {
+                    LOGGER.warn("config change notify request failed,can not retry,case: {}", e.getMessage());
+                }
+            }
+
+        }
+
         /**
          * Retry delay time.
          */
         private long getDelay() {
             return (long) retry * retry * INCREASE_STEPS;
         }
-        
+
         private void retryRequest() {
             retry++;
             if (retry > maxRetry) {
@@ -211,5 +349,5 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
             ConfigChangePluginExecutor.scheduleAsyncConfigChangePluginTask(this, getDelay(), TimeUnit.MILLISECONDS);
         }
     }
-    
+
 }
