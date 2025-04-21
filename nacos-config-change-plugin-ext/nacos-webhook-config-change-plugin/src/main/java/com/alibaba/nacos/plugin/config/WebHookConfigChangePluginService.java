@@ -83,6 +83,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
 
     private static final String WEBHOOK_TOKEN = "SLACK_TOKEN";
 
+    private static final String NAMESPACE_IDS = "namespaceIDs";
 
     @Override
     public void execute(ConfigChangeRequest configChangeRequest, ConfigChangeResponse configChangeResponse) {
@@ -104,6 +105,16 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
         ConfigChangeNotifyInfo configChangeNotifyInfo = new ConfigChangeNotifyInfo(
                 configChangeRequest.getRequestType().value(), true, (String) configChangeRequest.getArg("modifyTime"));
         wrapConfigChangeNotifyInfo(configChangeNotifyInfo, properties, configChangeRequest, configChangeResponse);
+
+
+        String namespaceIDs = properties.getProperty(NAMESPACE_IDS);
+        if (!StringUtils.isBlank(namespaceIDs)) {
+            if (Arrays.stream(namespaceIDs.split(",")).noneMatch(namespaceID -> StringUtils.equals(namespaceID, configChangeNotifyInfo.getNamespace()))) {
+                LOGGER.info("Ignore namespace {}", configChangeNotifyInfo.getNamespace());
+                return;
+            }
+        }
+
         ConfigChangePluginExecutor
                 .executeAsyncConfigChangePluginTask(new WebhookNotifySingleTask(properties, configChangeNotifyInfo));
     }
@@ -308,6 +319,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                 ))
 
                 );
+                LOGGER.info("slack notify result:{}", resp);
                 if (resp.isOk()) {
                     String ts = resp.getMessage().getTs();
                     String channel = resp.getMessage().getChannel();
@@ -325,6 +337,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                                     .build()
                                     ))
                     );
+                    LOGGER.info("slack notify result:{}", postMessage);
                 }
 
             } catch (Exception e) {
