@@ -263,8 +263,15 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                     return;
                 }
 
+                String fallbackText = String.format("Config Change Notify: %s - DataId: %s, Group: %s, Tenant: %s",
+                        configChangeNotifyInfo.getType(),
+                        configChangeNotifyInfo.getDataId(),
+                        configChangeNotifyInfo.getGroup(),
+                        configChangeNotifyInfo.getTenant());
+
                 ChatPostMessageResponse resp = slack.methods(token).chatPostMessage(req ->
                         req.channel(channelID)
+                                .text(fallbackText) // 添加顶级 text 参数
                                 .blocks(Arrays.asList(
                                         HeaderBlock.builder()
                                                 .blockId("header-1")
@@ -308,6 +315,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                     ChatPostMessageResponse postMessage = slack.methods(token).chatPostMessage(req ->
                             req.channel(channel)
                                     .threadTs(threadTs)
+                                    .text(fallbackText) // 添加顶级 text 参数
                                     .blocks(Arrays.asList(
                                             SectionBlock.builder()
                                                     .blockId("section-1")
