@@ -282,6 +282,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
 
                 ChatPostMessageResponse resp = slack.methods(token).chatPostMessage(req ->
                         req.channel(channelID)
+                                .mrkdwn(true)
                                 .text(fallbackText) // 添加顶级 text 参数
                                 .blocks(Arrays.asList(
                                         HeaderBlock.builder()
@@ -293,7 +294,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                         SectionBlock.builder()
                                                 .blockId("section-1")
                                                 .text(MarkdownTextObject.builder()
-                                                        .text(String.format("``%s\r\n%s\r\n```", configChangeNotifyInfo.getType(), configChangeNotifyInfo.getContent()))
+                                                        .text(fallbackText)
                                                         .build())
                                                 .fields(Arrays.asList(
                                                         MarkdownTextObject.builder()
@@ -322,11 +323,11 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                 LOGGER.info("slack notify result:{}", resp);
                 if (resp.isOk()) {
                     String ts = resp.getMessage().getTs();
-                    String channel = resp.getMessage().getChannel();
                     String threadTs = ts;
                     ChatPostMessageResponse postMessage = slack.methods(token).chatPostMessage(req ->
-                            req.channel(channel)
+                            req.channel(channelID)
                                     .threadTs(threadTs)
+                                    .mrkdwn(true)
                                     .text(fallbackText) // 添加顶级 text 参数
                                     .blocks(Arrays.asList(
                                             SectionBlock.builder()
