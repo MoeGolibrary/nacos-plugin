@@ -106,6 +106,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                 configChangeRequest.getRequestType().value(), true, (String) configChangeRequest.getArg("modifyTime"));
         wrapConfigChangeNotifyInfo(configChangeNotifyInfo, properties, configChangeRequest, configChangeResponse);
 
+        LOGGER.info("WebHookConfigChangePluginService execute,{}", configChangeNotifyInfo);
 
         String namespaceIDs = properties.getProperty(NAMESPACE_IDS);
         if (!StringUtils.isBlank(namespaceIDs)) {
