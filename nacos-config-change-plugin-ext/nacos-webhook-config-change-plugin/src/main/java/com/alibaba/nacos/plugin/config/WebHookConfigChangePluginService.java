@@ -333,7 +333,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                             SectionBlock.builder()
                                                     .blockId("section-1")
                                                     .text(MarkdownTextObject.builder()
-                                                            .text(String.format("``%s\r\n%s\r\n```", configChangeNotifyInfo.getType(), configChangeNotifyInfo.getContent()))
+                                                            .text(String.format("```%s\r\n%s\r\n```", configChangeNotifyInfo.getType(), configChangeNotifyInfo.getContent()))
                                                             .build())
                                                     .build()
                                     ))
