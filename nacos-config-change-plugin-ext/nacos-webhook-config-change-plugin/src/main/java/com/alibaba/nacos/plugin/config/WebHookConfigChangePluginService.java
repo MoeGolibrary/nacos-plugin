@@ -299,13 +299,13 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                                         .build())
                                                 .fields(Arrays.asList(
                                                         MarkdownTextObject.builder()
+                                                                .text(String.format("*Action:* %s", configChangeNotifyInfo.getAction()))
+                                                                .build(),
+                                                        MarkdownTextObject.builder()
                                                                 .text(String.format("*DataId:* %s", configChangeNotifyInfo.getDataId()))
                                                                 .build(),
                                                         MarkdownTextObject.builder()
                                                                 .text(String.format("*Group:* %s", configChangeNotifyInfo.getGroup()))
-                                                                .build(),
-                                                        MarkdownTextObject.builder()
-                                                                .text(String.format("*Tenant:* %s", configChangeNotifyInfo.getTenant()))
                                                                 .build(),
                                                         MarkdownTextObject.builder()
                                                                 .text(String.format("*ModifyTime:* %s", configChangeNotifyInfo.getModifyTime()))
@@ -334,8 +334,26 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                             SectionBlock.builder()
                                                     .blockId("section-1")
                                                     .text(MarkdownTextObject.builder()
-                                                            .text(String.format("```%s\r\n%s\r\n```", configChangeNotifyInfo.getType(), configChangeNotifyInfo.getContent()))
+                                                            .text(String.format("```\r\n%s\r\n```", configChangeNotifyInfo.getContent()))
                                                             .build())
+                                                    .fields(Arrays.asList(
+                                                                    MarkdownTextObject.builder()
+                                                                            .text(String.format("*Type:* %s", configChangeNotifyInfo.getType()))
+                                                                            .build(),
+                                                                    MarkdownTextObject.builder()
+                                                                            .text(String.format("*Desc:* %s", configChangeNotifyInfo.getDesc()))
+                                                                            .build(),
+                                                                    MarkdownTextObject.builder()
+                                                                            .text(String.format("*Effect:* %s", configChangeNotifyInfo.getEffect()))
+                                                                            .build(),
+                                                                    MarkdownTextObject.builder()
+                                                                            .text(String.format("*Use:* %s", configChangeNotifyInfo.getUse()))
+                                                                            .build(),
+                                                                    MarkdownTextObject.builder()
+                                                                            .text(String.format("*AppName:* %s", configChangeNotifyInfo.getAppName()))
+                                                                            .build()
+                                                            )
+                                                    )
                                                     .build()
                                     ))
                     );
