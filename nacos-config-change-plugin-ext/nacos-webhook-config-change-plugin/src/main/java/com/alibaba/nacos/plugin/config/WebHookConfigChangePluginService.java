@@ -334,7 +334,7 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                                             SectionBlock.builder()
                                                     .blockId("section-1")
                                                     .text(MarkdownTextObject.builder()
-                                                            .text(String.format("```\r\n%s\r\n```", configChangeNotifyInfo.getContent()))
+                                                            .text(String.format("*Content:*\r\n```\r\n%s\r\n```", configChangeNotifyInfo.getContent()))
                                                             .build())
                                                     .fields(Arrays.asList(
                                                                     MarkdownTextObject.builder()
