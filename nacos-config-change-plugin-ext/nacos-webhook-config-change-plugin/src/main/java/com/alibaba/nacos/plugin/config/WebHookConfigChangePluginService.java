@@ -275,11 +275,10 @@ public class WebHookConfigChangePluginService implements ConfigChangePluginServi
                     return;
                 }
 
-                String fallbackText = String.format("Config Change Notify: %s - DataId: %s, Group: %s, Tenant: %s",
-                        configChangeNotifyInfo.getType(),
+                String fallbackText = String.format("Config Change Notify: DataId: %s, Group: %s, Namespace: %s",
                         configChangeNotifyInfo.getDataId(),
                         configChangeNotifyInfo.getGroup(),
-                        configChangeNotifyInfo.getTenant());
+                        configChangeNotifyInfo.getNamespace());
 
                 ChatPostMessageResponse resp = slack.methods(token).chatPostMessage(req ->
                         req.channel(channelID)
